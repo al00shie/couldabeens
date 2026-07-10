@@ -19,8 +19,10 @@ library(moderndive)
 library(boot)
 library(ggrepel)
 library(ISLR)
-# Read global header file (imports datasets and does initial wrangling)
-source(file = "../R/header_D.R")
+# Read global header file (imports datasets and does initial wrangling);
+# ROOT tells it this notebook knits one level below the repo root
+ROOT <- ".."
+source(file = file.path(ROOT, "R/header.R"))
 ```
 
 ```{r}
@@ -99,8 +101,8 @@ if(run_bootstrap){
 ```
 
 ```{r}
-write.csv(bootstrap_coef_YR, paste("boot_YR",gen,".csv",sep=""), row.names = F)
-write.csv(bootstrap_coef_LB, paste("boot_LB",gen,".csv",sep=""), row.names = F)
+write.csv(bootstrap_coef_YR, file.path(ROOT, paste("data-gen/boot_YR",gen,".csv",sep="")), row.names = F)
+write.csv(bootstrap_coef_LB, file.path(ROOT, paste("data-gen/boot_LB",gen,".csv",sep="")), row.names = F)
 ```
 
 

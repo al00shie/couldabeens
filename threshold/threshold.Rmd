@@ -11,12 +11,11 @@ knitr::opts_chunk$set(echo = FALSE, fig.align = "center", warning = F, message =
 library(tidyverse)
 library(grid)
 library(patchwork)
-library(ISLR)
-library(gganimate)
 library(gridExtra)
-library(transformr)
-# load helper scripts
-source(file = "../R/header_D.R")
+# load helper scripts; ROOT tells the header this notebook knits one level
+# below the repo root
+ROOT <- ".."
+source(file = file.path(ROOT, "R/header.R"))
 ```
 
 ```{r}
@@ -25,16 +24,15 @@ threshold_vec <- data.frame(threshold = seq(-2,2,by=0.05))
 ```
 
 ```{r}
-# Run a new stack
+# Run a new stack (F reads the committed data-gen/ copies instead)
 run_stack <- F
-curr_string <- ""
 
 # Create corrosponding stack of couldabeens under variable threshold
 if(run_stack){
   stack <- create_threshold_stack(ls_datasets, threshold_vec, payroll_c)
-  write.csv(stack, paste("stack",curr_string,".csv",sep=""), row.names = FALSE)
+  write.csv(stack, file.path(ROOT, "data-gen/stack.csv"), row.names = FALSE)
 } else{
-    stack <- read_csv(paste("stack",curr_string,".csv",sep=""))
+    stack <- read_csv(file.path(ROOT, "data-gen/stack.csv"))
 }
 ```
 
@@ -42,9 +40,9 @@ if(run_stack){
 if(run_stack){
   # Coefficients in a threshold stack
   coef_array <- coefs_by_stack(stack, threshold_vec)
-  write.csv(coef_array,paste("coef_array",curr_string,".csv",sep=""), row.names = FALSE)
+  write.csv(coef_array, file.path(ROOT, "data-gen/coef_array.csv"), row.names = FALSE)
 } else{
-  coef_array <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
+  coef_array <- read_csv(file.path(ROOT, "data-gen/coef_array.csv"))
 }
 ```
 
@@ -53,133 +51,17 @@ if(run_stack){
 coef_arrayYR <- coef_array[which(coef_array$model == "year"),]
 coef_arrayLB <- coef_array %>% anti_join(coef_arrayYR)
 # Plot the coefficients against the varying thresholds
-coef_plotYR <- ggplot(data = coef_arrayYR) + 
+coef_plotYR <- ggplot(data = coef_arrayYR) +
   geom_smooth(mapping = aes(x = threshold, y = coef), se = F) +
   geom_point(mapping = aes(x = threshold, y = coef))
-coef_plotLB <- ggplot(data = coef_arrayLB) + 
+coef_plotLB <- ggplot(data = coef_arrayLB) +
   geom_smooth(mapping = aes(x = threshold, y = coef), se = F) +
   geom_point(mapping = aes(x = threshold, y = coef))
 ```
 
-\newpage
-
 ```{r}
-plot_coefarray <- function(coef_array){
-  ggplot(data = coef_array1) + 
-    geom_smooth(mapping = aes(x = threshold, y = coef_yr, color = era), se = F) +
-    geom_point(mapping = aes(x = threshold, y = coef_yr, color = era))
-}
+# Coefficient sensitivity to the classification threshold: year model, then
+# labor-share model
+coef_plotYR
+coef_plotLB
 ```
-
-
-# Various Smoothing Threshold Plots
-
-```{r}
-curr_string <- "_1"
-coef_array0 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array0)}
-```
-
-```{r}
-curr_string <- "_1_05"
-coef_array1 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array1)}
-```
-
-```{r}
-curr_string <- "_1_04"
-coef_array2 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array2)}
-```
-
-```{r}
-curr_string <- "_2_033"
-coef_array3 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array3)}
-```
-
-```{r}
-curr_string <- "_2_02"
-coef_array4 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array4)}
-```
-
-```{r}
-curr_string <- "_3_014"
-coef_array5 <- read_csv(paste("coef_array",curr_string,".csv",sep=""))
-# Plot the coefficients against the varying thresholds
-if(bplot){plot_coefarray(coef_array5)}
-```
-
-```{r}
-append_smoothing_index <- function(dataset, smoothing){
-  dataset <- data.frame(dataset)
-  smoothing = data.frame(smoothing = rep(smoothing, nrow(dataset)))
-  cbind(dataset, smoothing)
-}
-```
-
-
-```{r, fig.height = 9}
-# add smoothing index
-coef_array0 <- append_smoothing_index(coef_array0, smoothing = 0)
-# add smoothing index
-coef_array1 <- append_smoothing_index(coef_array1, smoothing = 1)
-# add smoothing index
-coef_array2 <- append_smoothing_index(coef_array2, smoothing = 2)
-# add smoothing index
-coef_array3 <- append_smoothing_index(coef_array3, smoothing = 3)
-# add smoothing index
-coef_array4 <- append_smoothing_index(coef_array4, smoothing = 4)
-# add smoothing index
-coef_array5 <- append_smoothing_index(coef_array5, smoothing = 5)
-```
-
-```{r}
-# stack
-coefs_stack <- rbind(coef_array0, coef_array1, coef_array2, coef_array3, coef_array4, coef_array5)
-```
-
-```{r}
-coef_stack_pre <- coefs_stack[which(coefs_stack$era == "pre"),]
-coef_stack_post <- coefs_stack[which(coefs_stack$era == "post"),]
-```
-
-```{r}
-ggplot(data = coef_stack_pre, mapping = aes(x = threshold, color = as.factor(smoothing))) + 
-  geom_density(aes(y = coef_yr), stat = "identity") +
-  labs(title = "Pre")
-```
-
-```{r}
-ggplot(data = coef_stack_post, mapping = aes(x = threshold, y = coef_yr, color = as.factor(smoothing))) + 
-  geom_density(stat = "identity") #+ 
-  #transition_states(states = smoothing)
-```
-
-
-
-```{r, include = F}
-# Stack of Threshold plots
-#if(bplot){
-#plot_all <- plot_stack(stack, "Proportion of Retired Couldabeens (Variable Classification Threshold)")
-#plot_pre <- plot_stack(stack_pre, "Proportion of Retired Couldabeens (Pre-Rule Era)")
-#plot_post <- plot_stack(stack_post, "Proportion of Retired Couldabeens (Post-Rule Era)")
-# Animations
-#animation_pre <- plot_pre + transition_time(time = threshold)
-# Uncomment the line below and run this chunk to view animation of post-rule thresholds
-#animation_pre
-#animation_post <- plot_post + transition_time(time = threshold)
-#}
-```
-
-
-
-
-
-
