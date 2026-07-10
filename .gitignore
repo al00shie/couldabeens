@@ -1,7 +1,13 @@
+# R session junk
 .Rproj.user
 .Rhistory
+.Rapp.history
 .RData
 .Ruserdata
+
+# Knit byproducts
+*_cache/
+*_files/
+
+# macOS
 .DS_Store
-code/.DS_Store
-threshold/.DS_Store
