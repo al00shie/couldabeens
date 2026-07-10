@@ -165,8 +165,8 @@ coef_plotLB <- ggplot(data = coef_arrayLB) +
 #       Resampling Results
 #==================================
 
-boot_YR <- read.csv(file = "data/boot_YR.csv")
-boot_LB <- read.csv(file = "data/boot_LB.csv")
+boot_YR <- read.csv(file = file.path(ROOT, "data-gen/boot_YR.csv"))
+boot_LB <- read.csv(file = file.path(ROOT, "data-gen/boot_LB.csv"))
 
 # Histogram of bootstrapped coef_yr
 BOOT_coefYR <- ggplot() + 
