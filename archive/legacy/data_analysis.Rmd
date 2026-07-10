@@ -1,0 +1,163 @@
+---
+title: "Exploratory Data Analysis"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = FALSE, fig.align = "center", warning = F, message = F)
+# load libaries
+library(tidyverse)
+library(grid)
+library(patchwork)
+# load helper scripts
+source(file = "../R/wrangle.R")
+source(file = "../R/visualization.R")
+# load rookies datasets
+df_pitcher_rookies <- read_csv("../data/rookie-pitcher.csv")
+df_position_rookies <- read_csv("../data/rookie-position.csv")
+# load retired datasets
+df_pitcher_retired <- read_csv("../data/retirees-pitcher.csv")
+df_position_retired <- read_csv("../data/retirees-position.csv")
+```
+
+```{r}
+# select appopriate columns
+wrangle_ <- function(dataset){
+  colnames(dataset)[3] <- "WAR"
+  dataset %>% select(WAR, Year)
+}
+# obtain summary of WAR: median and variance
+summary_ <- function(dataset){
+  dataset %>% 
+    group_by(Year) %>%
+    summarize(median_WAR = median(WAR), mean_WAR = mean(WAR), sd_WAR = sqrt(var(WAR))) %>%
+    mutate(threshold1 = mean_WAR - sd_WAR, threshold2 = median_WAR - sd_WAR)
+}
+```
+
+```{r}
+# get wrnagled datasets
+pitcher_rookies <- wrangle_(df_pitcher_rookies)
+position_rookies <- wrangle_(df_position_rookies)
+pitcher_retired <- wrangle_(df_pitcher_retired)
+position_retired <- wrangle_(df_position_retired)
+# get summaries
+pitcher_rookies_summary <- summary_(pitcher_rookies)
+position_rookies_summary <- summary_(position_rookies)
+pitcher_retired_summary <- summary_(pitcher_rookies)
+position_retired_summary <- summary_(pitcher_rookies)
+```
+
+```{r}
+# get summaries
+pitcher_rookies_summary <- pitcher_rookies_summary %>% select(Year, threshold1, threshold2)
+position_rookies_summary <- position_rookies_summary %>% select(Year, threshold1, threshold2)
+pitcher_retired_summary <- pitcher_retired_summary %>% select(Year, threshold1, threshold2)
+position_retired_summary <- position_retired_summary %>% select(Year, threshold1, threshold2)
+```
+
+
+```{r}
+append_thresholds <- function(dataset, summary_dataset, threshold_index){
+  above_threshold <- rep(NA, nrow(dataset))
+  for(i in 1:nrow(dataset)){
+    year <- as.numeric(dataset[i,2])
+    # threshold_index = 2 => mean
+    # threshold_index = 3 => median
+    above_threshold[i] <- (dataset[i,1] > summary_dataset[year - 1968, threshold_index])
+  }
+  dataset <- cbind(dataset,above_threshold)
+  dataset
+}
+```
+
+```{r}
+# check which players cross that year's threshold
+pitcher_retired <- append_thresholds(pitcher_retired, pitcher_rookies_summary, 2)
+pitcher_retired <- append_thresholds(pitcher_retired, pitcher_rookies_summary, 3)
+colnames(pitcher_retired)[3] <- "above_mean_threshold"
+colnames(pitcher_retired)[4] <- "above_median_threshold"
+```
+
+```{r}
+# check which players cross that year's threshold
+position_retired <- append_thresholds(position_retired, position_rookies_summary, 2)
+position_retired <- append_thresholds(position_retired, position_rookies_summary, 3)
+colnames(position_retired)[3] <- "above_mean_threshold"
+colnames(position_retired)[4] <- "above_median_threshold"
+```
+
+```{r}
+cbns_retired_mean <- count(position_retired,above_mean_threshold)
+cbns_retired_median <-count(position_retired,above_median_threshold)
+# normalize
+cbns_retired_mean[,2] <- cbns_retired_mean[,2]/sum(cbns_retired_mean$n)
+cbns_retired_median[,2] <- cbns_retired_median[,2]/sum(cbns_retired_median$n)
+```
+
+```{r}
+#cbns_retired_mean
+#cbns_retired_median
+```
+
+```{r}
+count_cbns <- function(dataset){
+  dataset %>% 
+    group_by(Year) %>%
+    summarize(count_cbns_mean = sum(above_mean_threshold), 
+              count_cbns_median = sum(above_median_threshold))
+}
+```
+
+```{r}
+cbns_pitchers <- count_cbns(pitcher_retired)
+cbns_position <- count_cbns(position_retired)
+```
+
+```{r}
+plot_cbns <- function(dataset, title, color){
+  ggplot(data = dataset, aes(x = Year, y = count_cbns_mean)) + 
+    stat_smooth(method = "lm", se = F, color = paste(color)) +
+    geom_point(color = paste(color)) +
+    labs(title = paste(title))
+}
+```
+
+## Measuring Lost Potential
+
+To reduce the inherently vague and amorphous concept of "hurting the game" into a measurably quantity, we fleshed out the "better players forced into retirement" idea from our proposal to define a specific type of player, the Couldabeen (CBn).
+
+As previously laid out, a Couldabeen is a player entering early retirement whose performance in their last season of major league play suggests that they were replaced on the field by worse players. In order to qualify for Couldabeen classification, three things must be true of a player's final season: a) the player was 35 or younger at midnight on June 30th; b) the player pitched more than 50 innings if a pitcher, or played in 30 games if a position player; and c) the player's Wins Above Replacement stat for the season was within one standard deviation of the average rookie that year or better. Our data set includes all MLB seasons between 1969, when the MLB added four new franchises (thus greatly expanding the player pool), and 2018 (2019 and 2020 are excluded to prevent ambiguity over which players are actually retiring).
+
+## Histograms of Rookie WAR
+
+To find the threshold defined in c), we compiled the season Wins Above Replacement stats from every rookie player between 1969 and 2018 who pitched more than 50 innings if a pitcher or played in 30 games if a position player. Although in theory they measure the same thing, the way WAR is calculated for pitchers is so different from WAR for position players that they may as well different statistics and are often listed as such. We therefore split the rookie data into two data sets, one for pitchers and one for everyone else.
+
+```{r, fig.height = 5}
+hist1 <- hist.var("WAR", pitcher_rookies, title = "Distribution of Pitcher WAR in Rookie Season Between 1969 and 2018")
+hist2 <- hist.var("WAR", position_rookies, title = "Distribution of Position Player WAR in Rookie Season Between 1969 and 2018")
+hist1/hist2
+```
+
+\newpage
+
+## Counting Couldabeens
+
+We then calculated our WAR thresholds for each season and counted the number of Couldabeens (pitcher and position player) retiring that year. We find two reassuring signs for our data set. First, an upward trend in the number of Couldabeens over time. Second, several important dates in MLB salary regulations correspond to visible Couldabeen spikes: the 1972 player strike, the first in history, which secured additional pension funding and players' right to salary arbitration; declining profits and salary cap proposals in the early 1990s and ensuing player strike, the *longest* in history; the reintroduction of the "luxury tax" in 2002; and the implementation of harsher luxury tax rules after the 2017 season.
+
+```{r, fig.height = 3}
+plot_cbns(cbns_pitchers, "Couldabeens: Pitchers", "deeppink1")
+```
+
+```{r, fig.height = 3}
+plot_cbns(cbns_position, "Couldabeens: Position Players", "dodgerblue3")
+```
+
+
+
+
+
+
+

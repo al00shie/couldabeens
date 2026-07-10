@@ -1,0 +1,67 @@
+---
+title: "Modeling (Threshold Analysis)"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = FALSE, fig.align = "center", warning = F, message = F)
+# load libaries
+library(tidyverse)
+library(grid)
+library(patchwork)
+library(gridExtra)
+# load helper scripts; ROOT tells the header this notebook knits one level
+# below the repo root
+ROOT <- ".."
+source(file = file.path(ROOT, "R/header.R"))
+```
+
+```{r}
+# Create vector of thresholds to be analyzed
+threshold_vec <- data.frame(threshold = seq(-2,2,by=0.05))
+```
+
+```{r}
+# Run a new stack (F reads the committed data-gen/ copies instead)
+run_stack <- F
+
+# Create corrosponding stack of couldabeens under variable threshold
+if(run_stack){
+  stack <- create_threshold_stack(ls_datasets, threshold_vec, payroll_c)
+  write.csv(stack, file.path(ROOT, "data-gen/stack.csv"), row.names = FALSE)
+} else{
+    stack <- read_csv(file.path(ROOT, "data-gen/stack.csv"))
+}
+```
+
+```{r}
+if(run_stack){
+  # Coefficients in a threshold stack
+  coef_array <- coefs_by_stack(stack, threshold_vec)
+  write.csv(coef_array, file.path(ROOT, "data-gen/coef_array.csv"), row.names = FALSE)
+} else{
+  coef_array <- read_csv(file.path(ROOT, "data-gen/coef_array.csv"))
+}
+```
+
+```{r, fig.align = "center"}
+# Split arrays
+coef_arrayYR <- coef_array[which(coef_array$model == "year"),]
+coef_arrayLB <- coef_array %>% anti_join(coef_arrayYR)
+# Plot the coefficients against the varying thresholds
+coef_plotYR <- ggplot(data = coef_arrayYR) +
+  geom_smooth(mapping = aes(x = threshold, y = coef), se = F) +
+  geom_point(mapping = aes(x = threshold, y = coef))
+coef_plotLB <- ggplot(data = coef_arrayLB) +
+  geom_smooth(mapping = aes(x = threshold, y = coef), se = F) +
+  geom_point(mapping = aes(x = threshold, y = coef))
+```
+
+```{r}
+# Coefficient sensitivity to the classification threshold: year model, then
+# labor-share model
+coef_plotYR
+coef_plotLB
+```

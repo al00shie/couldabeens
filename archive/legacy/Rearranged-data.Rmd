@@ -1,0 +1,63 @@
+---
+title: "Rearranged data"
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(infer)
+```
+
+```{r}
+d001 <- df_pit_ret %>%
+  select(WAR,Year,Age) %>%
+  mutate(Era_New = ifelse(Year>=2002,1,0))%>%
+  mutate(PP = "Pitcher")%>%
+  mutate(Status = "Retiree")
+
+d002 <- df_pit_rkes %>%
+  select(WAR,Year,Age) %>%
+  mutate(Era_New = ifelse(Year>=2002,1,0))%>%
+  mutate(PP = "Pitcher")%>%
+  mutate(Status = "Rookie")
+
+d003<- df_pos_ret %>%
+  select(`WAR/pos`,Year,Age) %>%
+  mutate(Era_New = ifelse(Year>=2002,1,0))%>%
+  mutate(PP = "Position")%>%
+  mutate(Status = "Retiree")%>%
+  mutate(WAR = `WAR/pos`)%>%
+  select(WAR, Year, Age, Era_New, PP, Status)
+
+d004 <- df_pos_rkes %>%
+  select(`WAR/pos`,Year,Age) %>%
+  mutate(Era_New = ifelse(Year>=2002,1,0))%>%
+  mutate(PP = "Position")%>%
+  mutate(Status = "Rookie")%>%
+  mutate(WAR = `WAR/pos`)%>%
+  select(WAR, Year, Age, Era_New, PP, Status)
+
+df.all.players <- data.frame(rbind(d001, d002, d003, d004))
+
+df.all.players
+```
+```{r}
+m001 <- lm(WAR ~. , data = df.all.players)
+summary(m001)
+```
+
+```{r}
+library(tree)
+
+m002 <- tree(WAR~., data = df.all.players)
+plot(m002)
+text(m002, pretty = 0, cex = 0.8)
+
+plot(cv.tree(m002))
+plot(prune.tree(m002, best = 2))
+text(prune.tree(m002, best = 2), pretty = 0, cex = 0.7)
+
+
+```
+

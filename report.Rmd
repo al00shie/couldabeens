@@ -483,11 +483,11 @@ knitr::opts_chunk$set(echo = T, eval = FALSE, fig.align = "center", warning = F,
 
 ```{r}
 # Load rookies datasets
-df_pit_rkes <- read_csv("../data/rookie-pitcher.csv")
-df_pos_rkes <- read_csv("../data/rookie-position.csv")
+df_pit_rkes <- read_csv("data/rookie-pitcher.csv")
+df_pos_rkes <- read_csv("data/rookie-position.csv")
 # Load retirees datasets
-df_pit_ret <- read_csv("../data/retirees-pitcher.csv")
-df_pos_ret <- read_csv("../data/retirees-position.csv")
+df_pit_ret <- read_csv("data/retirees-pitcher.csv")
+df_pos_ret <- read_csv("data/retirees-position.csv")
 ```
 
 ## Wrangling the Datasets

@@ -1,0 +1,257 @@
+---
+title: "Modeling"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 4)
+# load libaries
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(ISLR)
+# load helper scripts
+source(file = "../R/wrangle.R")
+source(file = "../R/model.R")
+source(file = "../R/visualization.R")
+source(file = "../R/threshold.R")
+# global parameters
+bplot <- T
+bloud <- T
+bhead <- T
+```
+
+```{r}
+#=============================#
+#       Import Datasets       #
+#=============================#
+# Load rookies datasets
+df_pit_rkes <- read_csv("../data/rookie-pitcher.csv")
+df_pos_rkes <- read_csv("../data/rookie-position.csv")
+# Load retirees datasets
+df_pit_ret <- read_csv("../data/retirees-pitcher.csv")
+df_pos_ret <- read_csv("../data/retirees-position.csv")
+# Find number of retirees by year
+num_retirees <- total_retirees_by_yr(df_pit_ret, df_pos_ret)
+num_retirees <- data.frame(retirees = num_retirees$retirees)
+```
+
+```{r, cache = T}
+#==============================#
+#       Position Players       #
+#==============================#
+# Obtain wrangled datasets
+pos_rkes <- wrangle_init(df_pos_rkes)
+pos_ret <- wrangle_init(df_pos_ret)
+# Get thresholds in each year
+pos_rkes_thresholds <- find_thresholds(pos_rkes)
+# See and record which players cross that year's threshold
+pos_ret <- compare_thresholds(pos_ret, pos_rkes_thresholds)
+```
+
+```{r, cache = T}
+#==============================#
+#        Pitcher Players       #
+#==============================#
+# Obtain wrangled datasets
+pit_rkes <- wrangle_init(df_pit_rkes)
+pit_ret <- wrangle_init(df_pit_ret)
+# Get thresholds in each year
+pit_rkes_thresholds <- find_thresholds(pit_rkes)
+# See and record which players cross that year's threshold
+pit_ret <- compare_thresholds(pit_ret, pit_rkes_thresholds)
+```
+
+```{r}
+write.csv(pit_ret,"../data-gen/pit_ret_classified.csv", row.names = F)
+write.csv(pos_ret,"../data-gen/pos_ret_classified.csv", row.names = F)
+```
+
+# The Couldabeen Classification Problem
+
+```{r, fig.height = 6}
+# Density plot of rookie and retired pitchers 
+pitcher_density <- ggplot() +
+  geom_density(data = pit_ret, aes_string(x = "WAR"), color = "salmon") +
+  geom_density(data = pit_rkes, aes_string(x = "WAR"), color = "skyblue3") +
+  geom_vline(xintercept = median(pit_rkes$WAR), color = "skyblue3") +
+  labs(title = "Pitchers")
+# Density plot of rookie position players and retired position players 
+position_density <- ggplot() +
+  geom_density(data = pos_ret, aes_string(x = "WAR"), color = "salmon") +
+  geom_density(data = pos_rkes, aes_string(x = "WAR"), color = "skyblue3") +
+  geom_vline(xintercept = median(pos_rkes$WAR), color = "skyblue3") +
+  labs(title = "Position")
+# Plot
+if(bplot){grid.arrange(pitcher_density, position_density, nrow = 2)}
+```
+
+\newpage
+
+# Counting Couldabeens
+
+```{r, echo = T}
+#===================================#
+#        Counting: Couldabeens      #
+#===================================#
+# Combine the threshold-classified retiree datasets
+retirees <- rbind(pit_ret,pos_ret)
+# Count couldabeens
+couldabeens <- count_cbns(retirees)
+```
+
+Our retirees dataframe looks like this:
+
+```{r, echo = F}
+head(retirees)
+```
+
+Our couldabeens dataframe looks like this:
+
+```{r, echo = F}
+if(bhead){head(couldabeens)}
+```
+
+## First Look: A Logistic Model
+
+```{r}
+# Partition retirees into pre-rule and post-rule era
+retirees_pre <- prerule(retirees)
+retirees_post <- postrule(retirees)
+```
+
+```{r, fig.width = 6, fig.height = 4}
+# On the retirees pre-rule dataset
+if(bplot){plot_logmodel(retirees_pre, "Retirees Above and Below Threshold (Pre-rule)")}
+model_log <- logistic_model(retirees_pre)
+if(bloud){summary(model_log)}
+```
+
+\newpage
+
+```{r, fig.width = 6, fig.height = 4}
+# On the retirees pre-rule dataset
+dataset <- retirees_post
+if(bplot){plot_logmodel(dataset, "Retirees Above and Below Threshold (Post-rule)")}
+model_log <- logistic_model(dataset)
+if(bloud){summary(model_log)}
+```
+
+\newpage
+
+# Computing Retiree Proportions
+
+```{r, echo = T}
+#===================================#
+#      Proportions: Couldabeens     #
+#===================================#
+# Find number of retirees by year
+num_retirees <- total_retirees_by_yr(df_pit_ret, df_pos_ret)
+num_retirees <- data.frame(retirees = num_retirees$retirees)
+# Append number of retirees that year
+couldabeens <- cbind(couldabeens, num_retirees)
+# Find proportion of couldabeens : retirees
+couldabeens <- couldabeens %>% mutate(prop = cbns/retirees)
+```
+
+Here is what the proportion-appended couldabeen dataframe looks like:
+
+```{r, echo = F}
+if(bhead){head(couldabeens)}
+```
+
+\newpage
+
+# Year as Predictor: Linear Modeling
+
+```{r, echo = T}
+#==================#
+#     Modeling     #
+#==================#
+# Partition dataset into years before and after rule
+couldabeens_pre <- prerule(couldabeens)
+couldabeens_post <- postrule(couldabeens)
+# Obtain linear model for pre-rule years
+model_pre <- linear_model(couldabeens_pre)
+coefs_pre <- model_pre$coefficients
+# Obtain linear model for post-rule years
+model_post <- linear_model(couldabeens_post)
+coefs_post <- model_post$coefficients
+# Obtain linear model for all years
+model_comp <- linear_model(couldabeens)
+coefs_comp <- model_comp$coefficients
+```
+
+\newpage 
+
+## Couldabeens: A Comprehensive Look
+
+```{r}
+## + geom_abline(slope = coefs_comp[2], intercept = coefs_comp[1], color = col) + 
+if(bloud){summary(model_comp)}
+```
+
+```{r}
+col <- "violet"
+col1 <- "salmon"
+col2 <- "skyblue2"
+# Plot proportion of couldabeens in post-rule era ()
+plot_comp <- scatter_props(couldabeens, title = "Proportion of Couldabeen Retirees") +
+    geom_abline(slope = coefs_comp[2], intercept = coefs_comp[1], color = col) + 
+    geom_point(data = couldabeens_pre, mapping = aes(x = Year, y = prop), color = col1) +
+    geom_abline(slope = coefs_pre[2], intercept = coefs_pre[1], color = col1) +
+    geom_point(data = couldabeens_post, mapping = aes(x = Year, y = prop),color = col2) +
+    geom_abline(slope = coefs_post[2], intercept = coefs_post[1], color = col2) + 
+    labs(y = "Proportion")
+plot_comp
+```
+
+
+\newpage
+
+## Couldabeens: Pre-rule Era (1969-2002)
+
+```{r}
+if(bloud){summary(model_pre)}
+```
+
+\bigskip
+\bigskip
+
+```{r, fig.cap= "Proportion of Retirees who were Coulabeens prior to the implementation of the Luxury Tax"}
+# Plot proportion of couldabeens in pre-rule era ()
+plot_pre <- plot_props_linear(couldabeens_pre, coefs_pre, color = "salmon", 
+                              title = "Proportion of Couldabeen Retirees (1969-2002)")
+plot_pre
+```
+
+\newpage
+
+## Couldabeens: Post-rule Era (2003-2018)
+
+```{r}
+if(bloud){summary(model_post)}
+```
+
+\bigskip
+\bigskip
+
+```{r, fig.cap= "Proportion of Retirees who were Coulabeens after the implementation of the Luxury Tax"}
+# Plot proportion of couldabeens in post-rule era ()
+plot_post <- plot_props_linear(couldabeens_post, coefs_post, color = "skyblue2", 
+                               title = "Proportion of Couldabeen Retirees (2003-2018)")
+plot_post
+```
+
+\newpage
+
+# Quadratic Regression Model
+
+```{r}
+
+```
+
+

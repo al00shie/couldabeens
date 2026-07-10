@@ -1,0 +1,112 @@
+---
+title: "Modeling"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 4)
+# load libaries
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(ISLR)
+# load helper scripts
+source(file = "../R/wrangle.R")
+source(file = "../R/model.R")
+source(file = "../R/visualization.R")
+source(file = "../R/threshold.R")
+# global parameters
+bplot <- T
+bloud <- T
+bhead <- T
+```
+
+```{r}
+#=============================#
+#       Import Datasets       #
+#=============================#
+# Load rookies datasets
+df_pit_rkes <- read_csv("../data/rookie-pitcher.csv")
+df_pos_rkes <- read_csv("../data/rookie-position.csv")
+# Load retirees datasets
+df_pit_ret <- read_csv("../data/retirees-pitcher.csv")
+df_pos_ret <- read_csv("../data/retirees-position.csv")
+# Find number of retirees by year
+num_retirees <- total_retirees_by_yr(df_pit_ret, df_pos_ret)
+num_retirees <- data.frame(retirees = num_retirees$retirees)
+```
+
+```{r, cache = T}
+#==============================#
+#       Position Players       #
+#==============================#
+# Obtain wrangled datasets
+pos_rkes <- wrangle_init(df_pos_rkes)
+pos_ret <- wrangle_init(df_pos_ret)
+# Get thresholds in each year
+pos_thresholds <- find_thresholds(pos_rkes)
+# See and record which players cross that year's threshold
+pos_ret <- compare_thresholds(pos_ret, pos_rkes_thresholds)
+#==============================#
+#        Pitcher Players       #
+#==============================#
+# Obtain wrangled datasets
+pit_rkes <- wrangle_init(df_pit_rkes)
+pit_ret <- wrangle_init(df_pit_ret)
+# Get thresholds in each year
+pit_thresholds <- find_thresholds(pit_rkes)
+# See and record which players cross that year's threshold
+pit_ret <- compare_thresholds(pit_ret, pit_rkes_thresholds)
+```
+
+## Smooth thresholds
+
+```{r}
+base_plot <- ggplot(data = pit_thresholds, mapping = aes(x = Year, y = threshold)) + 
+  geom_point()
+#base_plot
+```
+
+
+```{r}
+# compare various curves
+s1 <- smoothed_thresholds(pit_thresholds, w = 2, center_weight = 0.33)
+s2 <- smoothed_thresholds(pit_thresholds, w = 1, center_weight = 0.4)
+s3 <- smoothed_thresholds(pit_thresholds, w = 1, center_weight = 0.5)
+s4 <- smoothed_thresholds(pit_thresholds, w = 1, center_weight = 0.65)
+
+threshold_plot <- base_plot +
+  geom_point(data = s1, mapping = aes(x = Year, y = threshold), se = F, color = "blue")+
+  geom_point(data = s2, mapping = aes(x = Year, y = threshold), se = F, color = "violet")+
+  geom_point(data = s3, mapping = aes(x = Year, y = threshold), se = F, color = "red")+
+  geom_point(data = s4, mapping = aes(x = Year, y = threshold), se = F, color = "orange")
+
+#threshold_plot
+```
+
+```{r}
+threshold_plot <- base_plot +
+  geom_smooth(data = s1, mapping = aes(x = Year, y = threshold), se = F, color = "blue")+
+  geom_smooth(data = s2, mapping = aes(x = Year, y = threshold), se = F, color = "violet")+
+  geom_smooth(data = s3, mapping = aes(x = Year, y = threshold), se = F, color = "red")+
+  geom_smooth(data = s4, mapping = aes(x = Year, y = threshold), se = F, color = "orange")
+
+#threshold_plot
+```
+
+```{r}
+threshold_plot <- base_plot +
+  geom_point(data = s1, mapping = aes(x = Year, y = threshold), se = F, color = "blue")+
+  geom_smooth(data = s1, mapping = aes(x = Year, y = threshold), se = F, color = "blue")+
+  geom_point(data = s2, mapping = aes(x = Year, y = threshold), se = F, color = "violet")+
+  geom_smooth(data = s2, mapping = aes(x = Year, y = threshold), se = F, color = "violet")+
+  geom_point(data = s3, mapping = aes(x = Year, y = threshold), se = F, color = "red")+
+  geom_smooth(data = s3, mapping = aes(x = Year, y = threshold), se = F, color = "red")+
+  geom_point(data = s4, mapping = aes(x = Year, y = threshold), se = F, color = "orange")+
+  geom_smooth(data = s4, mapping = aes(x = Year, y = threshold), se = F, color = "orange")
+
+#threshold_plot
+```

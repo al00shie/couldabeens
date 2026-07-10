@@ -1,0 +1,318 @@
+---
+title: "Statistical Learning: Project Presentation"
+author: "G. Dunlavey, W. Ren, A. Taqi"
+output:
+  beamer_presentation:
+    theme: "AnnArbor"
+    colortheme: "dolphin"
+    fonttheme: "structurebold"
+header-includes:
+  - \newcommand{\R}{\mathbb{R}}
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 3, fig.width = 4.5)
+# load libaries
+library(knitr)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(ISLR)
+# load helper scripts
+source(file = "R/wrangle.R")
+source(file = "R/model.R")
+source(file = "R/visualization.R")
+source(file = "R/threshold.R")
+# global parameters
+bplot <- T
+bloud <- F
+bhead <- T
+bimage <- F
+```
+
+```{r, cache = T}
+# Load rookies datasets
+df_pit_rkes <- read_csv("data/rookie-pitcher.csv")
+df_pos_rkes <- read_csv("data/rookie-position.csv")
+# Load retirees datasets
+df_pit_ret <- read_csv("data/retirees-pitcher.csv")
+df_pos_ret <- read_csv("data/retirees-position.csv")
+# Find number of retirees by year
+num_retirees <- total_retirees_by_yr(df_pit_ret, df_pos_ret)
+num_retirees <- data.frame(retirees = num_retirees$retirees)
+# Create list of datasets for ease of function input
+ls_datasets <- list(df_pos_rkes, df_pos_ret, df_pit_rkes, df_pit_ret, num_retirees)
+# Obtain number of couldabeens
+couldabeens <- couldabeens_by_threshold(ls_datasets)
+# Obtain wrangled rookie datasets
+pit_rkes <- wrangle_init(df_pit_rkes)
+pos_rkes <- wrangle_init(df_pos_rkes)
+# read in the classified retiree data
+pos_ret <- read_csv("data-gen/pos_ret_classified.csv")
+pit_ret <- read_csv("data-gen/pit_ret_classified.csv")
+# combine them into one dataframe
+retirees <- prep_booleans(rbind(pos_ret, pit_ret))
+```
+
+# Research Question
+
+The MLB's "luxury tax," implemented in the 2003 Collective Bargaining Agreement, is a rule penalizing franchises whose team payroll for a given year exceeds an agreed threshold. This project attempts to test the tax's effect on quality of play by comparing the rates and numbers of above-replacement retirees (referred to here as "couldabeens") in the pre-rule era (1969-2002) and post-rule eras (2003-2018).
+
+# Definitions
+
+- WAR: Wins above replacement is a aggregate statistics that is a metric of...
+
+- Rookie: A player in a rookie league. Tend to be cheaper to have in the team as opposed to a seasoned veteran.
+
+# Theory
+
+Existing literature has established the depressive effect of the post-2003 CBAs on labor share in the MLB (Bradbury, 2019).
+
+::: columns
+
+:::: column
+
+```{r, out.width = "100%"}
+if(bimage){include_graphics("images/laborshare1.png")}
+```
+
+
+::::
+
+:::: column
+
+```{r, out.width = "100%"}
+if(bimage){include_graphics("images/laborshare2.png")}
+```
+
+::::
+
+:::
+
+# Theory
+
+How might the "luxury tax" increase the number of above-replacement retirees?
+
+- Players don't gain free agency until six years of MLB service time, making rookies cheaper than veterans.
+- Farm teams not counted towards salary threshold, guaranteeing reserve pool of rookies.
+- Teams direct limited budget towards retaining a handful of elite veterans, filling out roster with rookies.
+- Good-but-not-Mike-Trout veterans replaced with marginally inferior rookies to stay below salary threshold.
+
+# Methods: The Data
+
+We got our data from https://stathead.com/baseball/ and divided it into four data sets:
+
+1. Rookie pitchers
+2. Rookie position players
+3. Retired pitchers
+4. Retired position players
+
+The research question in this paper hinges on identifying above-replacement retirees. To motivate this, we will first define our classifier for a "couldabeen".
+
+# Methods: The Couldabeen Classifier
+
+For a given year $Y$, we first compute the median rookie's WAR, call it $m_Y$. Additionally, compute the standard deviation of that data and call it $\sigma_Y$. Then, given a threshold $t \in \mathbb{R}$, we construct the corresponding classifier for "couldabeen" status $C$ of a given retired player $p$ (from the year $Y$) to be as follows:
+\[
+C(p) = \begin{cases}
+True, \,  \text{WAR}_p \geq m_Y + t\sigma_Y \\
+False, \, \text{WAR}_p < m_Y + t\sigma_Y
+\end{cases}
+\]
+
+# Visualization: Couldabeen Classification
+
+- We can graph the densities of the WAR statistic for each player type (i.e. pitcher or position) to illustrate our premise.
+
+- Although the threshold defining a "couldabeen" is year specific, for the sake of visualization these graphs combine all data from 1969-2018.
+
+- In blue, we have the rookie players (with the median across all years 1969-2018 denoted), and in red, we have the corresponding retired players. 
+
+# Visualization: Couldabeen Classification
+
+```{r, fig.height = 3}
+# Density plot of rookie and retired pitchers 
+pitcher_density <- ggplot() +
+  geom_density(data = pit_ret, aes_string(x = "WAR"), color = "salmon") +
+  geom_density(data = pit_rkes, aes_string(x = "WAR"), color = "skyblue3") +
+  geom_vline(xintercept = median(pit_rkes$WAR), color = "skyblue3") +
+  labs(title = "Pitchers")
+# Density plot of rookie position players and retired position players 
+position_density <- ggplot() +
+  geom_density(data = pos_ret, aes_string(x = "WAR"), color = "salmon") +
+  geom_density(data = pos_rkes, aes_string(x = "WAR"), color = "skyblue3") +
+  geom_vline(xintercept = median(pos_rkes$WAR), color = "skyblue3") +
+  labs(title = "Position")
+# Plot
+if(bplot){grid.arrange(pitcher_density, position_density, nrow = 2)}
+```
+
+# Methods: Modeling
+
+Once every retired player is classified appopriately, we run two primary models:
+
+(i) **Logisitic Model**: On the retired players dataset, each player has a new column, `exceeds_threshold` which is the result of the classifier $C(p)$. 
+- This classifier is a boolean, so we run two models on the pre-rule era and the post-rule era and see the effects `Year` has on `exceeds_threshold`. 
+- Because there will always be "couldabeens", we do not expect a large effect size and hence a very significant result, however, the **sign** of our coefficient will be essential for our inference. 
+- If our research hypothesis is correct (that there is an effect), we expect to see a positive coefficient for $\beta_{Year}$.
+
+```{r}
+# Partition retirees into pre-rule and post-rule era
+retirees_pre <- prerule(retirees)
+retirees_post <- postrule(retirees)
+```
+
+# Logistic Model: Couldabeens Retirees (Pre-rule Era: 1969-2002)
+
+```{r, fig.width = 4, fig.height = 2.75}
+# On the retirees pre-rule dataset
+if(bplot){plot_logmodel(retirees_pre)}
+model_log <- logistic_model(retirees_pre)
+```
+
+# Logistic Model: Couldabeens Retirees (Post-rule Era: 2003-2018)
+
+```{r, fig.width = 4, fig.height = 2.75}
+# On the retirees pre-rule dataset
+if(bplot){plot_logmodel(retirees_post)}
+model_log <- logistic_model(retirees_post)
+```
+
+# Overall Results: Logisitic Models
+
+**Post-rule era** 
+
+- Post-rule era model, we obtain a parameter $\beta_{Year} = 0.01781$. So indeed, $\beta_{Year} > 0$.
+
+**Pre-rule era** 
+
+- For the pre-rule era model, we find $\beta_{Year} = 0.03392$. So indeed, we also have $\beta_{Year} > 0$. So, the effect is positive in both eras (will be discussed later in linear models). 
+- All in all, we may interpret the positive coefficient in both eras as saying that the probability a couldabeen is classified is greater at the end of an era than at its start for **both eras**.
+- Conclude that up until the rule has been implemented, the proportion of couldabeens has been rising, and it rapidly drops in 2003 (year of the rule) only to increase again.  
+
+
+# Methods: Modeling
+
+(ii) **Linear Model:** After aggregating all the retired players and their classifications, we summarize the data by year to obtain the proportion of retired players that were couldabeens that year, called `prop`.
+- As such, we now have $50$ data points (for each year), and a response variable being the proportion of couldabeens. 
+- So, we run a linear model fitting `Year ~ prop` for the pre-rule era and the post-rule era. 
+- Again, because there will always be "couldabeens", we do not expect a large effect size and hence a very significant result.
+- Like the logistic models, the **sign** of our coefficient will be essential for our inference. 
+- If our research hypothesis is correct (that there is an effect), we expect to see a positive coefficient for $\beta_{Year}$.
+
+# Linear Model: Couldabeens Retirees (Pre-rule Era: 1969-2002)
+
+```{r}
+# Partition dataset into years before and after rule
+couldabeens_pre <- prerule(couldabeens)
+couldabeens_post <- postrule(couldabeens)
+```
+
+
+```{r, fig.width = 4, fig.height = 2.75}
+# Obtain linear model for pre-rule years
+model_pre <- lm(formula = prop ~ I(Year), data = couldabeens_pre)
+coefs_pre <- model_pre$coefficients
+# Plot proportion of couldabeens in pre-rule era ()
+plot_props_linear(couldabeens_pre, coefs_pre, 
+                  color = "salmon", title = "Proportion of Couldabeen Retirees")
+```
+
+# Linear Model: Couldabeens Retirees (Post-rule Era: 2003-2018)
+
+```{r, fig.width = 4, fig.height = 2.75}
+# Obtain linear model for post-rule years
+model_post <- lm(formula = prop ~ I(Year), data = couldabeens_post)
+coefs_post <- model_post$coefficients
+# Plot proportion of couldabeens in post-rule era ()
+plot_props_linear(couldabeens_post, coefs_post, 
+                  color = "skyblue2", title = "Proportion of Couldabeen Retirees")
+```
+
+# Overall Results: Linear Models
+
+**Post-rule era** 
+
+- Post-rule era model: $\beta_{Year} = 0.002064$. As such, since $\beta_{Year} > 0$. 
+- There is evidence that the rule has lead to an increase in the proportion of couldabeens. 
+- Predictions: Initially, the post-rule model predicts that in $2003$ we get a proportion of $\beta_0 + 2003\beta_1 = 0.144$ and in $2018$, we get a proportion of $\beta_0 + 2018\beta_1 = 0.177$.
+
+**Pre-rule era** 
+
+- Pre-rule era, we obtained a parameter $\beta_{Year} = 0.005773$.  As such, we also have $\beta_{Year} > 0$. 
+- Conclude that up until the rule has been implemented, the proportion of couldabeens has been rising, and it rapidly drops in 2003 (year of the rule) only to increase again.
+
+# Simpson's Paradox
+
+- We chose to partition the dataset into the post-rule and pre-rule eras and fit a linear model `Year ~ prop`.
+- In both partitions, we find that the parameter $\beta_{Year} > 0$. 
+- However, if we do not make the partition, we find that $\beta_{Year} \approx 0$. 
+- This raises some questions regarding the role our partition plays in our inference and modeling choices. 
+- In fact, this is *Simpson's Paradox*.
+
+```{r, echo = F}
+# Obtain linear model for all years
+model_comp <- lm(formula = prop ~ I(Year), data = couldabeens)
+coefs_comp <- model_comp$coefficients
+```
+
+# Simpson's Paradox
+
+```{r, fig.height = 2.75}
+col <- "mediumvioletred"
+col1 <- "salmon"
+col2 <- "skyblue2"
+# Plot proportion of couldabeens in post-rule era ()
+scatter_props(couldabeens, title = "Proportion of Couldabeen Retirees") +
+    geom_abline(slope = coefs_comp[2], intercept = coefs_comp[1], color = col) + 
+    geom_point(data = couldabeens_pre, mapping = aes(x = Year, y = prop), color = col1) +
+    geom_abline(slope = coefs_pre[2], intercept = coefs_pre[1], color = col1) +
+    geom_point(data = couldabeens_post, mapping = aes(x = Year, y = prop),color = col2) +
+    geom_abline(slope = coefs_post[2], intercept = coefs_post[1], color = col2) + 
+    labs(y = "Proportion")
+```
+
+# Threshold Stability
+
+Now, we will analyze the effects of the threshold $t$ on the impact of our $\beta_{\text{Year}}$ variable in our linear models. It is important to see what the effects are since our inference relies on $\beta_{\text{Year}}$ being positive for any $t \in \R$. Recall the definition of the Couldabeen classifier: 
+
+## The Couldabeen Classifier
+
+Given a threshold $t \in \mathbb{R}$, we construct the corrosponding classifier for "couldabeen" status $C$ of a given retired player $p$ (from the year $Y$) to be as follows:
+\[
+C(p) = \begin{cases}
+True, \,  \text{WAR}_p \geq m_Y + t\sigma_Y \\
+False, \, \text{WAR}_p < m_Y + t\sigma_Y
+\end{cases}
+\]
+
+# Threshold Stability
+
+- Otained a positive result on the slope of $\beta_{Year}$ for a particular threshold in the post-rule era. 
+- Varying the threshold tells another story.
+- Run a linear model with `Year ~ prop` against a varying threshold $t$.
+- Then, we found that $\beta_{Year}$ is quite unstable.
+- We obtained the following graph on the next slide.
+
+# Threshold Stability
+
+```{r, out.width= "80%", fig.cap = "Parameters of the Linear Model against varying threshold for couldabeen status"}
+include_graphics("data-gen/coef.jpeg")
+```
+
+# Threshold Stability: Possible Adjustments
+
+- Thresholds every year were calculated as a function of *only* that year's data. 
+- So, the sample from which we obtain the threshold by each level (corrosponding to each year) is very small meaning small changes to the threshold cause high levels of noise in our final model. 
+- To treat this problem, we may consider "smoothing" the threshold out by taking the data of that year and adjacent years. 
+For instance, instead of considering just 2018 data, we may take 2017-2019 data for a "window length of 1". 
+- Furthermore, the addition of some supplementary yearly salary/budgets data may be useful as another predictor since `Year` alone does not seem to have good explanatory power.
+
+# References
+
+(1) https://stathead.com/baseball/
+(2) Bradbury, John Charles. “What Explains Labor's Declining Share of Revenue in Major League Baseball?” (2019).
+(3) https://blogs.fangraphs.com/mlbs-evolving-luxury-tax/
+
+

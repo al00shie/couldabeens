@@ -1,0 +1,191 @@
+---
+title: "Modeling"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 4)
+# load libaries
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(ISLR)
+library(factoextra)
+# load helper scripts
+source(file = "../R/wrangle.R")
+source(file = "../R/model.R")
+source(file = "../R/visualization.R")
+source(file = "../R/threshold.R")
+source(file = "../R/null_threshold.R")
+# global parameters
+bplot <- T
+bloud <- T
+bhead <- T
+```
+
+```{r, echo = T}
+# Get couldabeens
+couldabeens <- read_csv("../data-gen/couldabeens.csv")
+# Get payroll revenue data
+payroll_rev <- read_csv("../data/revenue-payroll.csv")
+payroll <- find_labShare(payroll_rev)
+```
+
+```{r}
+# Append payroll data in appopriate year (accounting for lag)
+couldabeens <- append_payrolls(couldabeens, payroll, lag = 0)
+# Create moneyball variable
+couldabeens <- couldabeens %>% mutate(postMoneyball = 1 - (Year < 2004))
+# Remove unused columns
+couldabeens <- couldabeens[-c(3)]
+# Split data
+couldabeens_pre <- couldabeens[which(couldabeens$postMoneyball == 0),]
+couldabeens_post <- couldabeens %>% anti_join(couldabeens_pre)
+```
+
+```{r}
+cor(couldabeens$totRev, couldabeens$labShare)
+cor(couldabeens$totRev, couldabeens$totPayroll)
+cor(couldabeens$totPayroll, couldabeens$labShare)
+```
+
+
+# Various Subsets
+
+```{r}
+# Choose predictors
+prep_lm <- function(dataset, cols_removed){
+  dataset[-cols_removed]
+}
+```
+
+## Subset 1
+
+```{r}
+dataset1 <- prep_lm(couldabeens_post, c(4,6))
+head(dataset1)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset1)
+summary(lm1)
+```
+
+## Subset 2
+
+```{r}
+dataset2 <- prep_lm(couldabeens, c(4))
+head(dataset2)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset2)
+summary(lm1)
+```
+
+## Subset 3
+
+```{r}
+dataset3 <- prep_lm(couldabeens_post, c(5,6))
+head(dataset3)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset3)
+summary(lm1)
+```
+
+## Subset 4
+
+```{r}
+dataset4 <- prep_lm(couldabeens, c(5))
+head(dataset4)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset4)
+summary(lm1)
+```
+
+## Subset 5
+
+```{r}
+dataset5 <- prep_lm(couldabeens_post, c(5,6))
+head(dataset5)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset5)
+summary(lm1)
+```
+
+## Subset 7
+
+```{r}
+dataset7 <- prep_lm(couldabeens_post, c(3,5,6))
+head(dataset7)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset7)
+summary(lm1)
+```
+
+## Subset 8
+
+```{r}
+dataset8 <- prep_lm(couldabeens, c(3,5))
+head(dataset8)
+```
+
+```{r}
+lm1 <- lm(prop ~ . - Year, data = dataset8)
+summary(lm1)
+```
+
+\newpage
+
+
+```{r}
+# Create plots
+plot_pre <- ggplot(data = couldabeens_pre, mapping = aes(x = Year, color = labShare, y = prop)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F)
+plot_post <- ggplot(data = couldabeens_post, mapping = aes(x = Year, color = labShare, y = prop)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F)
+```
+
+```{r}
+plot_post
+```
+
+```{r}
+# Create plots
+plot_pre <- ggplot(data = couldabeens_post, mapping = aes(x = labShare, y = prop)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F)
+#plot_pre
+```
+
+```{r}
+if(ncol(couldabeens_post) == 4){couldabeens_post[,4] <- NULL}
+lm_post <- lm(prop ~ . - Year - postMoneyball, data = couldabeens_post)
+summary(lm_post)
+```
+
+```{r}
+plot(lm_post)
+```
+
+# Resampling
+
+```{r}
+
+```
+
+
+\newpage

@@ -1,0 +1,114 @@
+---
+title: "Modeling"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# Setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 4)
+#============================#
+#       Load Libraries       #
+#============================#
+# Load libaries
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(moderndive)
+library(boot)
+library(ggrepel)
+library(ISLR)
+# Read global header file (imports datasets and does initial wrangling);
+# ROOT tells it this notebook knits one level below the repo root
+ROOT <- ".."
+source(file = file.path(ROOT, "R/header.R"))
+```
+
+```{r}
+# Bootstrap the rookie datasets and return couldabeens
+couldabeens_bootstrapped <- function(bootstrap_retirees = F){
+  # Obtain bootstrapped rookies
+  BOOT_pit_rkes <- sample_n(pit_rkes, replace = T, size = nrow(pit_rkes))
+  BOOT_pos_rkes <- sample_n(pos_rkes, replace = T, size = nrow(pos_rkes))
+  # Bootstrap the retirees?
+  if(bootstrap_retirees){
+    BOOT_pit_ret <- sample_n(pit_ret, replace = T, size = nrow(pit_ret))
+    BOOT_pos_ret <- sample_n(pos_ret, replace = T, size = nrow(pos_ret))
+  } else{
+    BOOT_pit_ret <- pit_ret
+    BOOT_pos_ret <- pos_ret
+  }
+  # Get thresholds in each year
+  BOOT_pit_thresholds <- find_thresholds(BOOT_pit_rkes)
+  BOOT_pos_thresholds <- find_thresholds(BOOT_pos_rkes)
+  # See and record which players cross that year's adjusted threshold from rookie players
+  if(bootstrap_retirees){
+    pit_ret <- compare_thresholds(BOOT_pit_ret, BOOT_pit_thresholds)
+    pos_ret <- compare_thresholds(BOOT_pos_ret, BOOT_pos_thresholds)
+  } else{
+    BOOT_pit_ret <- compare_thresholds(BOOT_pit_ret, BOOT_pit_thresholds)
+    BOOT_pos_ret <- compare_thresholds(BOOT_pos_ret, BOOT_pos_thresholds)
+  }
+  # Get couldabeen retirees
+  BOOT_couldabeens <- count_cbns(rbind(BOOT_pit_ret,BOOT_pos_ret))
+  # Append number of retirees that year
+  BOOT_couldabeens <- cbind(BOOT_couldabeens, num_retirees)
+  # Find and append proportion of couldabeens : retirees
+  BOOT_couldabeens <- BOOT_couldabeens %>% mutate(prop = cbns/retirees)
+  # Return dataframe
+  cbind(BOOT_couldabeens[,-c(2,3)], payroll_c)
+}
+```
+
+```{r}
+# Extract the coefficients of the post-rule era coefficients in the current bootstrap's stack for both
+# the year model and the laborShare model.
+coefs_bootstrapped <- function(curr_stack){
+  # fit the linear models for current bootstrapping 
+  lm_post <- linear_model(postrule(curr_stack)) # `prop ~ Year`
+  lm_labShare <- laborShare_model(postrule(curr_stack))
+  # coefficients of the respective models
+  coef_post <- data.frame(coef = lm_post$coefficients[2],
+                          model = "year")
+  coef_labShare <- data.frame(coef = lm_labShare$coefficients[2],
+                              model = "labor")
+  # stack the coefficient array
+  coefs_curr <- rbind(coef_post, coef_labShare)
+  # standardize rownames
+  rownames(coefs_curr) <- 1:nrow(coefs_curr)
+  coefs_curr
+}
+```
+
+
+```{r}
+run_bootstrap <- T
+gen <- "4"
+# Number of bootstraps 
+if(run_bootstrap){  
+  B <- 100
+  bootstrap_coef_YR <- rep(NA, B)
+  bootstrap_coef_LB <- rep(NA, B)
+  for(i in 1:B){
+    # Bootstrap the couldabeens
+    curr_couldabeens <- couldabeens_bootstrapped()
+    curr_coefs <- coefs_bootstrapped(curr_couldabeens)
+    bootstrap_coef_YR[i] <- curr_coefs[1,1]
+    bootstrap_coef_LB[i] <- curr_coefs[2,1]
+  }
+}
+```
+
+```{r}
+write.csv(bootstrap_coef_YR, file.path(ROOT, paste("data-gen/boot_YR",gen,".csv",sep="")), row.names = F)
+write.csv(bootstrap_coef_LB, file.path(ROOT, paste("data-gen/boot_LB",gen,".csv",sep="")), row.names = F)
+```
+
+
+```{r}
+cbns_B <- couldabeens_bootstrapped()
+coefs <- lm(prop ~ Year, data = cbns_B)$coefficients
+plot_props_linear(cbns_B, coefs)
+```
+

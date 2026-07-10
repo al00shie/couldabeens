@@ -1,0 +1,155 @@
+---
+title: "Modeling"
+author: "Group 6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# Setup chunks
+knitr::opts_chunk$set(echo = F, fig.align = "center", warning = F, message = F, fig.height = 4)
+#============================#
+#       Load Libraries       #
+#============================#
+# Load libaries
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(moderndive)
+library(ggrepel)
+library(ISLR)
+# Read global header file (imports datasets and does initial wrangling)
+source(file = "../R/header_D.R")
+```
+
+# The Data
+
+```{r}
+if(bloud){head(couldabeens_t)}
+if(bloud){tail(couldabeens_t)}
+```
+
+## Yearly Payroll Data
+
+```{r}
+if(bloud){head(payroll)}
+```
+
+### Checking Correlations
+
+```{r, echo = T}
+# Revenue and Labor Share
+cor(couldabeens$totRev, couldabeens$labShare)
+# Revenue and Payroll
+cor(couldabeens$totRev, couldabeens$totPayroll)
+# Payroll and Labor Share
+cor(couldabeens$totPayroll, couldabeens$labShare)
+```
+
+\newpage
+
+# Predictor Visualization
+
+```{r, fig.height = 2.75}
+ggplot() + geom_point(data = payroll, mapping = aes(x = totRev, y = labShare, color = Year))
+ggplot() + geom_point(data = payroll, mapping = aes(x = totRev, y = totPayroll, color = Year))
+ggplot() + geom_point(data = payroll, mapping = aes(x = totPayroll, y = labShare, color = Year))
+```
+
+\newpage
+
+# Couldabeens across the Years
+
+```{r}
+ggplot(couldabeens_t, aes(x = Year, y = prop)) +
+  geom_point() +
+  stat_smooth(method = "lm", se = FALSE)
+```
+
+# Hypothesis Test: Why Split the Data?
+
+```{r}
+lm <- lm(prop ~ postMoneyball, data = couldabeens_t)
+summary(lm)
+```
+
+\newpage
+
+# Linear Model: Year (Different Eras)
+
+Since we realize `postMoneyball` is a statistically significant variable, we decide to attempt a different slopes model and attempt to measure the effect sizes of the partitioned data.
+
+## Post-Moneyball
+
+```{r}
+lm <- lm(prop ~ Year, data = couldabeens_post)
+summary(lm)
+```
+
+```{r}
+ggplot(couldabeens_post, aes(x = Year, y = prop)) +
+  geom_point() +
+  stat_smooth(method = "lm", se = FALSE)
+```
+
+\newpage
+
+## Pre-Moneyball
+
+```{r}
+lm <- lm(prop ~ Year, data = couldabeens_pre)
+summary(lm)
+```
+
+```{r}
+ggplot(couldabeens_pre, aes(x = Year, y = prop)) +
+  geom_point() +
+  stat_smooth(method = "lm", se = FALSE)
+```
+
+\newpage 
+
+# Linear Model: Labor Share
+
+```{r}
+lm <- lm(prop ~ labShare, data = couldabeens_post)
+summary(lm)
+```
+
+## Relationship between Labor Share and Couldabeen Rates
+
+```{r}
+col1 <- "skyblue3"
+ggplot(data = couldabeens_post, mapping = aes(y = prop, x = labShare)) + 
+  geom_point(color = col1) +
+  geom_smooth(color = col1, se = F, method = "lm")
+```
+
+## Diagnostic Plots: Labor Share Linear Model
+
+```{r, fig.height = 3.75}
+plot(lm)
+```
+
+
+\newpage
+
+## Couldabeen Rates across the Years
+
+```{r}
+col1 <- "skyblue3"
+ggplot(data = couldabeens_post, mapping = aes(x = Year, y = prop, color = labShare)) + 
+  geom_point() +
+  geom_smooth(se = F, method = "lm", color = "grey23") +
+  scale_color_gradient(low = "red", high = "green")
+```
+
+```{r, fig.height = 2.75}
+col1 <- "skyblue2"
+ggplot(data = payroll, mapping = aes(x = Year, y = labShare, size = totRev)) + 
+  geom_point(color = col1) +
+  geom_smooth(se = F, method = "lm") +
+  geom_vline(xintercept = 1995, color = "firebrick3") +
+  geom_vline(xintercept = 2003, color = "darkgreen")
+```
+
