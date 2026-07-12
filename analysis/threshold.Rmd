@@ -65,3 +65,10 @@ coef_plotLB <- ggplot(data = coef_arrayLB) +
 coef_plotYR
 coef_plotLB
 ```
+
+```{r}
+# Era-split sensitivity: the year-model coefficient fit separately on the
+# pre- and post-rule eras at each threshold
+coef_array_era <- coefs_by_stack_era(stack)
+plot_coefarray(coef_array_era)
+```

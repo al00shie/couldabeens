@@ -43,6 +43,49 @@ coefs_by_threshold <- function(curr_stack){
   coefs_curr
 }
 
+# Era-split variant of coefs_by_stack: coefficients of the year model fit
+# separately on the pre- and post-rule eras at each threshold. Iterates over
+# the thresholds present in the stack itself: values that round-tripped
+# through a CSV don't reliably bit-match a freshly built seq(), so filtering
+# the stack against an external threshold vector can silently come up empty
+coefs_by_stack_era <- function(threshold_stack){
+  thresholds <- sort(unique(threshold_stack$threshold))
+  # get first stack
+  first_stack <- isolate_threshold(threshold_stack, thresholds[1])
+  # add first coefficients to the coefficient stack
+  coef_stack <- coefs_by_threshold_era(first_stack)
+  for(i in 2:length(thresholds)){
+    # current stack
+    curr_stack <- isolate_threshold(threshold_stack, thresholds[i])
+    curr_coefs <- coefs_by_threshold_era(curr_stack)
+    # recursively stack coef arrays in each threshold
+    coef_stack <- rbind(coef_stack, curr_coefs)
+  }
+  coef_stack
+}
+
+# Extract the pre- and post-rule year-model coefficients in the current
+# threshold's stack
+coefs_by_threshold_era <- function(curr_stack){
+  # extract current threshold
+  curr_threshold <- curr_stack[1,"threshold"]
+  # fit the linear model for each era at the current threshold
+  lm_pre <- linear_model(prerule(curr_stack))   # `prop ~ Year`
+  lm_post <- linear_model(postrule(curr_stack))
+  # coefficients of the respective eras
+  coef_pre <- data.frame(coef_int = lm_pre$coefficients[1],
+                         coef_yr = lm_pre$coefficients[2], era = "pre",
+                         threshold = curr_threshold)
+  coef_post <- data.frame(coef_int = lm_post$coefficients[1],
+                          coef_yr = lm_post$coefficients[2], era = "post",
+                          threshold = curr_threshold)
+  # stack the coefficient array
+  coefs_curr <- rbind(coef_pre, coef_post)
+  # standardize rownames
+  rownames(coefs_curr) <- 1:nrow(coefs_curr)
+  coefs_curr
+}
+
 #==========================================================
 #                   THRESHOLD ANALYSIS
 #==========================================================
@@ -127,10 +170,17 @@ couldabeens_by_threshold <- function(ls_datasets, payroll_c = payroll_c, thresho
 
 plot_stack <- function(stack_data, title = ""){
   # add stat_smooth by each threhsold to show trend is invariant to threshold?
-  ggplot(stack_data) + 
+  ggplot(stack_data) +
     geom_point(mapping = aes(x = Year, y = prop, color = as.factor(threshold))) +
-    theme(legend.position = "none") + 
+    theme(legend.position = "none") +
     labs(title = title)
+}
+
+# Year-model coefficient against the classification threshold, split by era
+plot_coefarray <- function(coef_array_era){
+  ggplot(data = coef_array_era) +
+    geom_smooth(mapping = aes(x = threshold, y = coef_yr, color = era), se = F) +
+    geom_point(mapping = aes(x = threshold, y = coef_yr, color = era))
 }
 
 
