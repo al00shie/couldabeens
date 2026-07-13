@@ -1,0 +1,132 @@
+---
+title: "Couldabeens v2: Player-Level Exit Hazard and Tax Pressure, 1985--2024"
+author: "couldabeens243 v2 (Phase 3)"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = "center", fig.height = 3.6)
+suppressMessages({
+  library(tidyverse); library(splines); library(sandwich)
+  library(lmtest); library(broom)
+})
+set.seed(243)
+GEN <- "../data-gen"
+
+seasons <- read_csv(file.path(GEN, "player_seasons.csv.gz"), show_col_types = FALSE) %>%
+  group_by(player_ID, class) %>%
+  mutate(last_year = max(year)) %>%    # includes the in-progress season,
+  ungroup()                            # so exits through 2024 are settled
+
+thr   <- read_csv(file.path(GEN, "thresholds_v2.csv"),  show_col_types = FALSE)
+teams <- read_csv(file.path(GEN, "player_teams.csv.gz"), show_col_types = FALSE)
+pay   <- read_csv(file.path(GEN, "team_payrolls.csv"),   show_col_types = FALSE)
+
+panel <- seasons %>%
+  filter(year >= 1985, year <= 2024,
+         if_else(class == "pos", G >= 30, exposure >= 50),   # regulars
+         !is.na(age)) %>%
+  mutate(exit = as.integer(year == last_year),
+         post = as.integer(year >= 2003),
+         covid = as.integer(year == 2020)) %>%
+  left_join(thr %>% select(year, class, thr_raw), by = c("year", "class")) %>%
+  mutate(cb_grade = WAR >= thr_raw) %>%
+  left_join(teams, by = c("player_ID", "class", "year")) %>%
+  left_join(pay %>% select(year, team, pay_pctile, tax_ratio),
+            by = c("year", "team"))
+
+cl_se <- function(m, d) coeftest(m, vcov = vcovCL(m, cluster = d$player_ID))
+```
+
+The unit of analysis is the qualifying player-season (G $\ge$ 30 position /
+IP $\ge$ 50 pitcher), 1985--2024: `r nrow(panel)` seasons,
+`r n_distinct(panel$player_ID)` players, exit rate `r sprintf("%.1f%%", 100*mean(panel$exit))`.
+"Tax pressure" is the player's team payroll as a within-year percentile
+(splice- and proration-invariant), with the payroll/CBT-threshold ratio as a
+secondary measure from 2003. The couldabeen question, restated at the player
+level: **conditional on performance and age, did playing for an expensive
+roster raise the probability that a good player's season was his last, more
+so after the 2003 luxury tax?**
+
+# Model A: couldabeen-grade seasons (headline)
+
+Seasons whose WAR clears that year's rookie-mean threshold -- the players the
+2020 report worried about losing:
+
+```{r modelA}
+cbg <- panel %>% filter(cb_grade, !is.na(pay_pctile))
+mA <- glm(exit ~ ns(age, 4) + WAR + class + pay_pctile * post,
+          family = binomial, data = cbg)
+tA <- cl_se(mA, cbg)
+rows <- grep("pay_pctile|^post|WAR|class", rownames(tA))
+knitr::kable(round(tA[rows, ], 3), caption = sprintf(
+  "Exit hazard, couldabeen-grade seasons (n = %d; player-clustered SEs)", nrow(cbg)))
+```
+
+```{r modelA-margin, results="asis"}
+co <- coef(mA); V <- vcovCL(mA, cluster = cbg$player_ID)
+b_post <- co["pay_pctile"] + co["pay_pctile:post"]
+se_post <- sqrt(V["pay_pctile","pay_pctile"] +
+                V["pay_pctile:post","pay_pctile:post"] +
+                2 * V["pay_pctile","pay_pctile:post"])
+cat(sprintf(paste0(
+  "Payroll-percentile slope on the exit logit: pre-tax %.3f; post-tax %.3f ",
+  "(SE %.3f, z = %.2f). A positive post-tax slope means good players on ",
+  "expensive rosters exit more.\n"),
+  co["pay_pctile"], b_post, se_post, b_post / se_post))
+```
+
+# Model B: over the tax line, 2003+
+
+```{r modelB}
+b <- panel %>% filter(cb_grade, post == 1, !is.na(tax_ratio)) %>%
+  mutate(over = as.integer(tax_ratio >= 1))
+mB <- glm(exit ~ ns(age, 4) + WAR + class + over, family = binomial, data = b)
+tB <- cl_se(mB, b)
+knitr::kable(round(tB[grep("over|WAR", rownames(tB)), , drop = FALSE], 3),
+             caption = sprintf(
+  "Exit hazard, couldabeen-grade seasons 2003+ (n = %d, %d on over-threshold teams)",
+  nrow(b), sum(b$over)))
+```
+
+# Model C: does the payroll effect depend on being good?
+
+All qualifying seasons, three-way interaction (WAR x payroll percentile x
+post-tax era):
+
+```{r modelC}
+allq <- panel %>% filter(!is.na(pay_pctile))
+mC <- glm(exit ~ ns(age, 4) + class + covid + WAR * pay_pctile * post,
+          family = binomial, data = allq)
+tC <- cl_se(mC, allq)
+knitr::kable(round(tC[grep("WAR|pay_pctile|post", rownames(tC)), ], 3),
+             caption = sprintf("All qualifying seasons (n = %d)", nrow(allq)))
+```
+
+# Predicted hazard
+
+```{r predplot, fig.height=3.4}
+nd <- expand_grid(age = 33, WAR = 2, class = "pos",
+                  pay_pctile = seq(0, 1, 0.05), post = 0:1)
+nd$p <- predict(mA, nd, type = "response")
+ggplot(nd, aes(pay_pctile, p, color = factor(post, 0:1, c("pre-tax", "post-tax")))) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("#2a78d6", "#1baf7a")) +
+  labs(title = "Predicted exit probability, couldabeen-grade season (age 33, WAR 2, position player)",
+       x = "team payroll percentile (within year)", y = "P(final season)",
+       color = NULL) + theme_minimal()
+```
+
+# Verdict
+
+```{r verdict, results="asis"}
+zA <- b_post / se_post
+zB <- tB["over", "z value"]
+cat(sprintf(paste0(
+  "Post-tax payroll-percentile effect on good players' exit hazard: z = %.2f. ",
+  "Over-the-threshold team effect (2003+): z = %.2f. Interpret positive, ",
+  "significant values as evidence for the tax-squeeze mechanism; values near ",
+  "zero say roster expense does not predict good players' exits once age and ",
+  "performance are controlled.\n"), zA, zB))
+```

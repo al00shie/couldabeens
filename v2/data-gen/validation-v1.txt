@@ -1,0 +1,5 @@
+date: 2026-07-12
+overlap: 50 years (1969-2018)
+correlation: 0.876
+mean_abs_diff: 0.0236
+mean_bias_v2_minus_v1: -0.0064

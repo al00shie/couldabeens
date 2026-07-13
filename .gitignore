@@ -11,3 +11,6 @@
 
 # macOS
 .DS_Store
+
+# v2 raw data: committed as .gz snapshots only
+v2/data/raw/*.txt
