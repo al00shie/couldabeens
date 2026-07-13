@@ -1,0 +1,169 @@
+---
+title: "Couldabeens v2: Hardened Models, 1969--2024"
+author: "couldabeens243 v2 (Phase 2)"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = "center", fig.height = 3.6)
+suppressMessages({
+  library(tidyverse); library(sandwich); library(lmtest)
+  library(strucchange); library(broom)
+})
+set.seed(243)
+
+cb <- read_csv("../data-gen/couldabeens_v2.csv", show_col_types = FALSE) %>%
+  filter(!provisional) %>%                       # 1969-2024, settled cohorts
+  mutate(post = as.integer(year >= 2003),
+         era = factor(post, 0:1, c("pre", "post")))
+ls_tab <- read_csv("../data-gen/laborshare_v2.csv", show_col_types = FALSE)
+cb <- cb %>% left_join(ls_tab %>% select(year, labShare, source), by = "year")
+```
+
+# 1. Replication: v1 models on six more seasons
+
+OLS of `prop_raw ~ year` per era, as in the 2020 report (which had data
+through 2018 and found the post-era slope positive but insignificant,
+$p = 0.398$):
+
+```{r replication}
+rep_tab <- cb %>% group_by(era) %>%
+  group_modify(~ tidy(lm(prop_raw ~ year, data = .x))) %>%
+  filter(term == "year") %>%
+  select(era, estimate, std.error, p.value)
+knitr::kable(rep_tab, digits = 4,
+             caption = "OLS slope of couldabeen proportion by era, 1969-2024")
+```
+
+# 2. The right likelihood: binomial GLM with an era interaction
+
+`prop` is `cbns` successes out of `retirees` trials; the proportion enters a
+quasi-binomial GLM (logit link) and the pre/post slope difference is a fitted
+interaction rather than two eyeballed fits.
+
+```{r glm}
+g <- glm(cbind(cbns_raw, retirees - cbns_raw) ~ year * post,
+         family = quasibinomial, data = cb)
+phi <- summary(g)$dispersion
+co <- coef(g); V <- vcov(g)
+post_slope <- co["year"] + co["year:post"]
+post_se <- sqrt(V["year","year"] + V["year:post","year:post"] +
+                2 * V["year","year:post"])
+glm_tab <- tidy(g) %>% select(term, estimate, std.error, p.value)
+knitr::kable(glm_tab, digits = 4, caption = sprintf(
+  "Quasi-binomial GLM (dispersion = %.2f). Post-era slope (logit/yr) = %.4f, SE = %.4f, z = %.2f",
+  phi, post_slope, post_se, post_slope / post_se))
+```
+
+# 3. Serial dependence
+
+```{r hac}
+ols_post <- lm(prop_raw ~ year, data = filter(cb, post == 1))
+dw <- dwtest(ols_post)
+nw <- coeftest(ols_post, vcov = NeweyWest(ols_post, lag = 3, prewhite = FALSE))
+cat(sprintf("Post-era OLS: Durbin-Watson = %.2f (p = %.3f).\n", dw$statistic, dw$p.value))
+cat(sprintf("Year slope with Newey-West(3) errors: %.5f (SE %.5f, p = %.3f)\n",
+            nw["year","Estimate"], nw["year","Std. Error"], nw["year","Pr(>|t|)"]))
+```
+
+# 4. Earning the 2003 split: changepoint and placebo tests
+
+The 2020 report picked 2003 by eye and confirmed it with a t-test on the same
+data. Two independent checks: Bai-Perron breakpoint estimation, and a placebo
+sweep refitting the interaction GLM at every fake rule-year.
+
+```{r breakpoints}
+bp <- breakpoints(prop_raw ~ year, data = cb, h = 8)
+bp_years <- cb$year[bp$breakpoints]
+cat("Bai-Perron breakpoint estimate(s) (BIC-selected):",
+    if (length(bp_years) && !any(is.na(bp_years))) paste(bp_years, collapse = ", ")
+    else "none", "\n")
+```
+
+```{r placebo, fig.height=3.2}
+placebo <- map_dfr(1980:2015, function(y0) {
+  d <- cb %>% mutate(fake = as.integer(year >= y0))
+  gg <- glm(cbind(cbns_raw, retirees - cbns_raw) ~ year * fake,
+            family = quasibinomial, data = d)
+  tibble(rule_year = y0, z = tidy(gg) %>%
+           filter(term == "year:fake") %>% pull(statistic))
+})
+ggplot(placebo, aes(rule_year, abs(z))) +
+  geom_col(fill = ifelse(placebo$rule_year == 2003, "#2a78d6", "grey75")) +
+  labs(title = "Placebo sweep: |z| of the slope-change interaction at each fake rule-year",
+       x = "fake rule-year", y = "|z|") + theme_minimal()
+rank_2003 <- placebo %>% arrange(desc(abs(z))) %>%
+  mutate(r = row_number()) %>% filter(rule_year == 2003) %>% pull(r)
+cat(sprintf("2003 ranks %d of %d fake rule-years by |interaction z|.\n",
+            rank_2003, nrow(placebo)))
+```
+
+# 5. Labor share, extended and spliced
+
+Post-2003 years with labor-share data (2020 excluded; payroll source splices
+from the v1 hand-collected series to Spotrac in 2021 -- absorbed by a source
+dummy):
+
+```{r laborshare}
+lab <- cb %>% filter(post == 1, !is.na(labShare))
+g_lab <- glm(cbind(cbns_raw, retirees - cbns_raw) ~ labShare + source,
+             family = quasibinomial, data = lab)
+knitr::kable(tidy(g_lab) %>% select(term, estimate, std.error, p.value),
+             digits = 3, caption = sprintf(
+  "Quasi-binomial GLM, post-era, n = %d years", nrow(lab)))
+```
+
+# 6. Honest bootstrap
+
+Year-cluster (case) bootstrap of the interaction GLM, B = 2000, seeded:
+
+```{r bootstrap}
+B <- 2000
+boots <- replicate(B, {
+  d <- cb[sample(nrow(cb), replace = TRUE), ]
+  gb <- suppressWarnings(
+    glm(cbind(cbns_raw, retirees - cbns_raw) ~ year * post,
+        family = quasibinomial, data = d))
+  cb_ <- coef(gb); cb_["year"] + cb_["year:post"]
+})
+ci <- quantile(boots, c(.025, .975))
+cat(sprintf("Post-era logit slope: %.4f, 95%% bootstrap CI [%.4f, %.4f]; P(slope > 0) = %.3f\n",
+            post_slope, ci[1], ci[2], mean(boots > 0)))
+```
+
+# 7. Sensitivity: classifier and population
+
+```{r sensitivity}
+full <- read_csv("../data-gen/couldabeens_v2_full.csv", show_col_types = FALSE) %>%
+  filter(!provisional) %>% mutate(post = as.integer(year >= 2003))
+fit_one <- function(d, cbn, n = "retirees", label) {
+  d$s <- d[[cbn]]; d$f <- d[[n]] - d[[cbn]]
+  gg <- glm(cbind(s, f) ~ year * post, family = quasibinomial, data = d)
+  co <- coef(gg); V <- vcov(gg)
+  sl <- co["year"] + co["year:post"]
+  se <- sqrt(V["year","year"] + V["year:post","year:post"] + 2*V["year","year:post"])
+  tibble(series = label, post_slope = sl, se = se, z = sl/se)
+}
+sens <- bind_rows(
+  fit_one(cb, "cbns_raw",   label = "raw / regulars (headline)"),
+  fit_one(cb, "cbns_rate",  label = "rate / regulars"),
+  fit_one(cb, "cbns_peak3", label = "peak3 / regulars"),
+  fit_one(full, "cbns_raw", label = "raw / full population"))
+knitr::kable(sens, digits = 3,
+             caption = "Post-era slope (logit/yr) across classifiers and populations")
+```
+
+# Verdict
+
+```{r verdict, results="asis"}
+sig <- abs(post_slope / post_se) > 1.96
+cat(sprintf(paste0(
+  "With six added seasons and the correct likelihood, the post-2003 trend in ",
+  "the couldabeen share is %s (logit slope %.4f, z = %.2f; bootstrap ",
+  "P(slope>0) = %.3f). See the tables above for how this claim moves across ",
+  "classifiers and populations, and the placebo panel for whether 2003 is a ",
+  "distinguished break year rather than an artifact of the split.\n"),
+  ifelse(sig, "statistically significant", "still not statistically significant"),
+  post_slope, post_slope / post_se, mean(boots > 0)))
+```
