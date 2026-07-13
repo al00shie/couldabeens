@@ -1,0 +1,3 @@
+file,url,downloaded,md5,rows,min_year,max_year
+war_daily_bat.txt,https://www.baseball-reference.com/data/war_daily_bat.txt,2026-07-12,fdfb1b4793ed69b4b41850cf4b6bb34c,126396,1871,2026
+war_daily_pitch.txt,https://www.baseball-reference.com/data/war_daily_pitch.txt,2026-07-12,0c5552434a6d74c7baf6b04a82fc108c,57663,1871,2026
