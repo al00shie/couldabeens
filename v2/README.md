@@ -14,7 +14,35 @@ Rscript v2/ingest/02-build-panels.R       # player-season panel, rookies, retire
 Rscript v2/ingest/03-build-couldabeens.R  # yearly couldabeen series, 3 classifiers
 Rscript v2/ingest/04-payroll-tax.R        # CBT thresholds + labor share to 2025
 Rscript v2/ingest/05-validate-v1.R        # reconciliation against the v1 series
+Rscript v2/ingest/06-team-payroll.R       # team payrolls 1985-2025 + player-team map
 ```
+
+Analysis notebooks (knit from `v2/analysis/`):
+
+- `01-hardened-models.Rmd` — Phase 2: quasi-binomial GLM with era
+  interaction, HAC errors, Bai-Perron changepoint, placebo rule-years,
+  seeded bootstrap, classifier/population sensitivity.
+- `02-survival.Rmd` — Phase 3: discrete-time exit-hazard models on 30k
+  qualifying player-seasons (1985–2024) with team tax pressure.
+
+## Results at a glance (2026-07-12)
+
+The 2020 report's tentative conclusions do **not** survive the extension:
+
+- Post-2003 trend in the couldabeen share: OLS slope 0.0002 (p = 0.92);
+  GLM logit slope z = 0.11; bootstrap P(slope>0) = 0.54.
+- The labor-share effect (p = 0.084 in 2020) fades to p = 0.57 with six more
+  seasons and a payroll-source dummy.
+- The only BIC-selected structural break in the series is ~1990, not 2003;
+  2003 ranks 12th of 36 placebo rule-years.
+- Player-level: conditional on age and WAR, neither team payroll percentile
+  post-tax (z = −0.87) nor playing for an over-the-CBT-threshold club
+  (z = −0.32) raises a good player's exit hazard; the payroll main effect is
+  *protective* (z = −3.5), consistent with good teams retaining players.
+
+Net: with the correct likelihood, more data, and a player-level causal
+design, there is no detectable luxury-tax squeeze on couldabeens. The ~1990
+break is the one genuinely interesting lead for future work.
 
 Everything under `v2/data-gen/` is regenerable from the committed snapshots in
 `v2/data/raw/` — unlike v1, every derived file has a committed writer.
